@@ -1,0 +1,329 @@
+{
+  "id": "weixin-claw-channel",
+  "name": "微信 Claw 通道插件",
+  "version": "0.1.0",
+  "compatibility": {
+    "min_app_version": "0.1.0"
+  },
+  "api_version": 1,
+  "types": [
+    "channel",
+    "action"
+  ],
+  "permissions": [
+    "channel.receive",
+    "channel.send"
+  ],
+  "risk_level": "medium",
+  "triggers": [
+    "manual"
+  ],
+  "entrypoints": {
+    "channel": "plugin.channel.handle",
+    "action": "plugin.action.execute",
+    "config_preview": "plugin.config_preview.preview"
+  },
+  "locales": [
+    {
+      "id": "zh-CN",
+      "label": "简体中文",
+      "native_label": "简体中文",
+      "resource": "locales/zh-CN.json"
+    },
+    {
+      "id": "en-US",
+      "label": "English",
+      "native_label": "English",
+      "resource": "locales/en-US.json"
+    }
+  ],
+  "config_specs": [
+    {
+      "scope_type": "channel_account",
+      "title": "微信 Claw 账号配置",
+      "title_key": "weixin_claw_channel.channel_account.title",
+      "description": "先保存账号基础参数，再用账号级扫码动作获取二维码和登录状态。宿主只渲染通用 staged form，不理解任何微信私有协议。",
+      "description_key": "weixin_claw_channel.channel_account.description",
+      "schema_version": 1,
+      "config_schema": {
+        "fields": [
+          {
+            "key": "account_label",
+            "label": "账号标识",
+            "label_key": "weixin_claw_channel.channel_account.fields.account_label.label",
+            "type": "string",
+            "required": true,
+            "description": "这是当前微信 Claw 账号在插件内部的业务标识，便于区分多个账号。",
+            "description_key": "weixin_claw_channel.channel_account.fields.account_label.description",
+            "min_length": 1,
+            "max_length": 100
+          },
+          {
+            "key": "poll_interval_seconds",
+            "label": "轮询间隔秒数",
+            "label_key": "weixin_claw_channel.channel_account.fields.poll_interval_seconds.label",
+            "type": "integer",
+            "required": false,
+            "description": "控制插件轮询微信消息的频率。默认值已经够用，不要为了追求实时性盲目调小。",
+            "description_key": "weixin_claw_channel.channel_account.fields.poll_interval_seconds.description",
+            "default": 5,
+            "minimum": 1,
+            "maximum": 300
+          },
+          {
+            "key": "runtime_profile",
+            "label": "运行模式",
+            "label_key": "weixin_claw_channel.channel_account.fields.runtime_profile.label",
+            "type": "enum",
+            "required": false,
+            "description": "稳定模式用于日常运行，调试模式用于联调或排障。",
+            "description_key": "weixin_claw_channel.channel_account.fields.runtime_profile.description",
+            "default": "stable",
+            "enum_options": [
+              {
+                "label": "稳定模式",
+                "label_key": "weixin_claw_channel.channel_account.fields.runtime_profile.options.stable",
+                "value": "stable"
+              },
+              {
+                "label": "调试模式",
+                "label_key": "weixin_claw_channel.channel_account.fields.runtime_profile.options.debug",
+                "value": "debug"
+              }
+            ]
+          }
+        ]
+      },
+      "ui_schema": {
+        "sections": [
+          {
+            "id": "basic",
+            "title": "基础配置",
+            "title_key": "weixin_claw_channel.channel_account.sections.basic.title",
+            "description": "这里放正式保存的账号参数。扫码结果、二维码和临时状态不进正式配置字段。",
+            "description_key": "weixin_claw_channel.channel_account.sections.basic.description",
+            "fields": [
+              "account_label",
+              "poll_interval_seconds",
+              "runtime_profile"
+            ]
+          },
+          {
+            "id": "login",
+            "title": "扫码登录",
+            "title_key": "weixin_claw_channel.channel_account.sections.login.title",
+            "description": "登录流程通过插件声明的动作和运行时状态区完成，宿主只负责通用渲染。",
+            "description_key": "weixin_claw_channel.channel_account.sections.login.description",
+            "fields": []
+          }
+        ],
+        "field_order": [
+          "account_label",
+          "poll_interval_seconds",
+          "runtime_profile"
+        ],
+        "submit_text": "保存微信 Claw 配置",
+        "submit_text_key": "weixin_claw_channel.channel_account.submit",
+        "widgets": {
+          "account_label": {
+            "widget": "input",
+            "placeholder": "例如：家庭微信 1 号机",
+            "placeholder_key": "weixin_claw_channel.channel_account.fields.account_label.placeholder",
+            "help_text": "这个值只给当前插件自己使用，不会同步到微信端。",
+            "help_text_key": "weixin_claw_channel.channel_account.fields.account_label.help_text"
+          },
+          "poll_interval_seconds": {
+            "widget": "input",
+            "placeholder": "默认 5 秒",
+            "placeholder_key": "weixin_claw_channel.channel_account.fields.poll_interval_seconds.placeholder",
+            "help_text": "建议先保持默认值，等链路稳定后再按需要调优。",
+            "help_text_key": "weixin_claw_channel.channel_account.fields.poll_interval_seconds.help_text"
+          },
+          "runtime_profile": {
+            "widget": "select",
+            "help_text": "排障时再切到调试模式，别把开发噪音带到日常运行里。",
+            "help_text_key": "weixin_claw_channel.channel_account.fields.runtime_profile.help_text"
+          }
+        },
+        "actions": [
+          {
+            "key": "start_login",
+            "kind": "config_preview",
+            "section_id": "login",
+            "label": "生成扫码二维码",
+            "label_key": "weixin_claw_channel.channel_account.actions.start_login.label",
+            "description": "生成新的扫码二维码，并把当前登录阶段写入运行时状态区。",
+            "description_key": "weixin_claw_channel.channel_account.actions.start_login.description",
+            "action_key": "start_login",
+            "depends_on_fields": [
+              "account_label"
+            ],
+            "reset_on_change_fields": [
+              "account_label",
+              "runtime_profile"
+            ],
+            "modes": [
+              "create",
+              "edit"
+            ]
+          },
+          {
+            "key": "refresh_login_status",
+            "kind": "config_preview",
+            "section_id": "login",
+            "label": "刷新登录状态",
+            "label_key": "weixin_claw_channel.channel_account.actions.refresh_login_status.label",
+            "description": "读取当前扫码会话的状态，确认是否已经扫码或完成登录。",
+            "description_key": "weixin_claw_channel.channel_account.actions.refresh_login_status.description",
+            "action_key": "get_login_status",
+            "depends_on_fields": [
+              "account_label"
+            ],
+            "modes": [
+              "create",
+              "edit"
+            ]
+          }
+        ],
+        "runtime_sections": [
+          {
+            "key": "login_runtime",
+            "section_id": "login",
+            "title": "登录状态",
+            "title_key": "weixin_claw_channel.channel_account.runtime.login.title",
+            "description": "这里显示最近一次扫码动作返回的通用运行时状态。二维码预览走 preview_artifacts，不走私有字段。",
+            "description_key": "weixin_claw_channel.channel_account.runtime.login.description",
+            "items": [
+              {
+                "key": "login_status",
+                "kind": "status_badge",
+                "source": "status",
+                "label": "当前状态",
+                "label_key": "weixin_claw_channel.channel_account.runtime.login.items.status.label",
+                "status_options": [
+                  {
+                    "value": "not_logged_in",
+                    "label": "未登录",
+                    "label_key": "weixin_claw_channel.channel_account.runtime.login.items.status.options.not_logged_in"
+                  },
+                  {
+                    "value": "waiting_scan",
+                    "label": "等待扫码",
+                    "label_key": "weixin_claw_channel.channel_account.runtime.login.items.status.options.waiting_scan",
+                    "tone": "info"
+                  },
+                  {
+                    "value": "scan_confirmed",
+                    "label": "等待确认",
+                    "label_key": "weixin_claw_channel.channel_account.runtime.login.items.status.options.scan_confirmed",
+                    "tone": "warning"
+                  },
+                  {
+                    "value": "active",
+                    "label": "已登录",
+                    "label_key": "weixin_claw_channel.channel_account.runtime.login.items.status.options.active",
+                    "tone": "success"
+                  },
+                  {
+                    "value": "expired",
+                    "label": "二维码已失效",
+                    "label_key": "weixin_claw_channel.channel_account.runtime.login.items.status.options.expired",
+                    "tone": "danger"
+                  }
+                ]
+              },
+              {
+                "key": "login_title",
+                "kind": "text",
+                "source": "title",
+                "label": "阶段标题",
+                "label_key": "weixin_claw_channel.channel_account.runtime.login.items.title.label",
+                "empty_text": "还没有执行扫码动作。",
+                "empty_text_key": "weixin_claw_channel.channel_account.runtime.login.items.title.empty_text"
+              },
+              {
+                "key": "login_message",
+                "kind": "text",
+                "source": "message",
+                "label": "结果说明",
+                "label_key": "weixin_claw_channel.channel_account.runtime.login.items.message.label",
+                "empty_text": "执行扫码动作后，这里会显示当前登录结果说明。",
+                "empty_text_key": "weixin_claw_channel.channel_account.runtime.login.items.message.empty_text"
+              },
+              {
+                "key": "updated_at",
+                "kind": "text",
+                "source": "updated_at",
+                "label": "最近更新时间",
+                "label_key": "weixin_claw_channel.channel_account.runtime.login.items.updated_at.label",
+                "empty_text": "还没有可展示的更新时间。",
+                "empty_text_key": "weixin_claw_channel.channel_account.runtime.login.items.updated_at.empty_text"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "capabilities": {
+    "channel": {
+      "platform_code": "weixin-claw",
+      "inbound_modes": [
+        "polling"
+      ],
+      "delivery_modes": [
+        "reply"
+      ],
+      "supports_member_binding": true,
+      "supports_group_chat": false,
+      "supports_threading": false,
+      "ui": {
+        "status_action_key": "refresh-login-status",
+        "account_actions": [
+          {
+            "key": "start-login",
+            "action_name": "start_login",
+            "label": "开始登录",
+            "description": "生成登录二维码并等待扫码。",
+            "variant": "primary"
+          },
+          {
+            "key": "refresh-login-status",
+            "action_name": "get_login_status",
+            "label": "刷新登录状态",
+            "description": "读取当前账号的扫码或登录状态。"
+          },
+          {
+            "key": "logout",
+            "action_name": "logout",
+            "label": "清理本地登录态",
+            "description": "清理当前账号在插件本地保存的登录态，不会注销远端微信会话。",
+            "variant": "danger",
+            "requires_confirmation": true,
+            "confirmation_text": "确认清理当前账号的本地登录态？这不会注销远端微信会话。"
+          },
+          {
+            "key": "purge-runtime-state",
+            "action_name": "purge_runtime_state",
+            "label": "清空运行状态",
+            "description": "清空当前账号作用域下的插件本地运行状态。",
+            "variant": "danger",
+            "requires_confirmation": true,
+            "confirmation_text": "确认清空当前账号作用域下的插件本地运行状态？"
+          }
+        ],
+        "binding": {
+          "identity_label": "微信用户标识",
+          "identity_placeholder": "例如：wx_user_001",
+          "identity_help_text": "当前阶段使用插件标准化后的外部用户标识。",
+          "chat_label": "会话标识",
+          "chat_placeholder": "例如：direct:wx_user_001",
+          "chat_help_text": "用于排查标准化后的会话映射。",
+          "candidate_title": "待绑定微信用户",
+          "candidate_help_text": "这里只展示最近给当前账号发过消息、但还没有在当前账号下完成绑定的用户。"
+        }
+      },
+      "reserved": false
+    }
+  }
+}

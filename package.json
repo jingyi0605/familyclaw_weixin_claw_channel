@@ -1,0 +1,12 @@
+{
+  "name": "@familyclaw/weixin-claw-channel",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "bridge:self-check": "node ./vendor/weixin_transport/bridge.mjs --self-check"
+  }
+}
