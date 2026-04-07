@@ -1,12 +1,19 @@
 from __future__ import annotations
 
+from pathlib import Path
 import subprocess
 from unittest.mock import patch
 
 import pytest
 
-from plugin.bridge import CHANNEL_POLL_TIMEOUT_SECONDS, CHANNEL_SEND_TIMEOUT_SECONDS, invoke_transport
-from plugin.models import WeixinBridgeError, WeixinBridgeProtocolError
+from plugin.bridge import (
+    CHANNEL_POLL_TIMEOUT_SECONDS,
+    CHANNEL_SEND_TIMEOUT_SECONDS,
+    WEIXIN_CLAW_NODE_PATH_ENV_VAR,
+    _resolve_node_executable,
+    invoke_transport,
+)
+from plugin.models import WeixinBridgeError, WeixinBridgeProtocolError, WeixinPluginError
 
 
 def test_bridge_supports_poll_send_and_action_requests() -> None:
@@ -48,6 +55,36 @@ def test_bridge_returns_structured_error() -> None:
 
     assert exc_info.value.error_code == "transport_mock_failure"
     assert exc_info.value.field == "testing.force_error"
+
+
+def test_bridge_prefers_explicit_node_override(tmp_path: Path) -> None:
+    node_executable = tmp_path / "node.exe"
+    node_executable.write_text("", encoding="utf-8")
+
+    with patch.dict("plugin.bridge.os.environ", {WEIXIN_CLAW_NODE_PATH_ENV_VAR: str(node_executable)}, clear=False):
+        with patch("plugin.bridge.shutil.which", return_value=None):
+            assert _resolve_node_executable() == node_executable
+
+
+def test_bridge_falls_back_to_common_node_installation_path(tmp_path: Path) -> None:
+    node_executable = tmp_path / "node.exe"
+    node_executable.write_text("", encoding="utf-8")
+
+    with patch.dict("plugin.bridge.os.environ", {WEIXIN_CLAW_NODE_PATH_ENV_VAR: ""}, clear=False):
+        with patch("plugin.bridge.shutil.which", return_value=None):
+            with patch("plugin.bridge._common_node_installation_paths", return_value=[node_executable]):
+                assert _resolve_node_executable() == node_executable
+
+
+def test_bridge_reports_missing_node_runtime_with_helpful_message() -> None:
+    with patch.dict("plugin.bridge.os.environ", {WEIXIN_CLAW_NODE_PATH_ENV_VAR: ""}, clear=False):
+        with patch("plugin.bridge.shutil.which", return_value=None):
+            with patch("plugin.bridge._common_node_installation_paths", return_value=[]):
+                with pytest.raises(WeixinPluginError) as exc_info:
+                    invoke_transport(kind="channel", action="poll", payload={})
+
+    assert exc_info.value.error_code == "node_runtime_missing"
+    assert WEIXIN_CLAW_NODE_PATH_ENV_VAR in exc_info.value.detail
 
 
 def test_bridge_rejects_invalid_json_output() -> None:

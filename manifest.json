@@ -1,7 +1,7 @@
 {
   "id": "weixin-claw-channel",
   "name": "微信 Claw 通道插件",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "compatibility": {
     "min_app_version": "0.1.2"
   },
