@@ -5,6 +5,8 @@ __pycache__/
 .venv/
 .env
 .runtime/
+.familyclaw-venv/
+.familyclaw-requirements.txt
 *.log
 *.sqlite
 *.sqlite-shm
