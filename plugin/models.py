@@ -38,7 +38,7 @@ class WeixinRuntimeContext:
 
 @dataclass(slots=True)
 class BridgeRequest:
-    """Python 发给 Node 的统一请求结构。"""
+    """插件内部 transport 的统一请求结构。"""
 
     kind: str
     action: str
@@ -65,11 +65,11 @@ class WeixinPluginError(RuntimeError):
 
 
 class WeixinBridgeError(WeixinPluginError):
-    """Node 桥接层已经返回结构化错误。"""
+    """插件 transport 层返回的结构化错误。"""
 
 
 class WeixinBridgeProtocolError(WeixinPluginError):
-    """Node 进程返回了不符合协议的内容。"""
+    """插件 transport 返回了不符合协议的内容。"""
 
     def __init__(self, detail: str) -> None:
         super().__init__(error_code="bridge_protocol_error", detail=detail)

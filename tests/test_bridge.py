@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
-import subprocess
 from unittest.mock import patch
 
 import pytest
@@ -9,14 +7,13 @@ import pytest
 from plugin.bridge import (
     CHANNEL_POLL_TIMEOUT_SECONDS,
     CHANNEL_SEND_TIMEOUT_SECONDS,
-    WEIXIN_CLAW_NODE_PATH_ENV_VAR,
-    _resolve_node_executable,
+    _resolve_timeout_seconds,
     invoke_transport,
 )
-from plugin.models import WeixinBridgeError, WeixinBridgeProtocolError, WeixinPluginError
+from plugin.models import WeixinBridgeError, WeixinBridgeProtocolError
 
 
-def test_bridge_supports_poll_send_and_action_requests() -> None:
+def test_bridge_supports_mock_poll_send_and_action_requests() -> None:
     poll_result = invoke_transport(
         kind="channel",
         action="poll",
@@ -36,6 +33,7 @@ def test_bridge_supports_poll_send_and_action_requests() -> None:
     assert poll_result["next_cursor"] == "42"
     assert send_result["provider_message_ref"] == "mock-provider-message-ref"
     assert action_result["channel_account_id"] == "channel-account-001"
+    assert action_result["login_status"] == "not_logged_in"
 
 
 def test_bridge_returns_structured_error() -> None:
@@ -57,58 +55,38 @@ def test_bridge_returns_structured_error() -> None:
     assert exc_info.value.field == "testing.force_error"
 
 
-def test_bridge_prefers_explicit_node_override(tmp_path: Path) -> None:
-    node_executable = tmp_path / "node.exe"
-    node_executable.write_text("", encoding="utf-8")
+def test_bridge_dispatches_request_to_python_transport() -> None:
+    captured_requests = []
 
-    with patch.dict("plugin.bridge.os.environ", {WEIXIN_CLAW_NODE_PATH_ENV_VAR: str(node_executable)}, clear=False):
-        with patch("plugin.bridge.shutil.which", return_value=None):
-            assert _resolve_node_executable() == node_executable
+    def fake_dispatch(request):
+        captured_requests.append(request)
+        return {"provider_message_ref": "provider-msg-001"}
 
+    with patch("plugin.bridge.dispatch_transport_request", side_effect=fake_dispatch):
+        result = invoke_transport(
+            kind="channel",
+            action="send",
+            payload={"delivery": {"text": "hello"}},
+        )
 
-def test_bridge_falls_back_to_common_node_installation_path(tmp_path: Path) -> None:
-    node_executable = tmp_path / "node.exe"
-    node_executable.write_text("", encoding="utf-8")
-
-    with patch.dict("plugin.bridge.os.environ", {WEIXIN_CLAW_NODE_PATH_ENV_VAR: ""}, clear=False):
-        with patch("plugin.bridge.shutil.which", return_value=None):
-            with patch("plugin.bridge._common_node_installation_paths", return_value=[node_executable]):
-                assert _resolve_node_executable() == node_executable
-
-
-def test_bridge_reports_missing_node_runtime_with_helpful_message() -> None:
-    with patch.dict("plugin.bridge.os.environ", {WEIXIN_CLAW_NODE_PATH_ENV_VAR: ""}, clear=False):
-        with patch("plugin.bridge.shutil.which", return_value=None):
-            with patch("plugin.bridge._common_node_installation_paths", return_value=[]):
-                with pytest.raises(WeixinPluginError) as exc_info:
-                    invoke_transport(kind="channel", action="poll", payload={})
-
-    assert exc_info.value.error_code == "node_runtime_missing"
-    assert WEIXIN_CLAW_NODE_PATH_ENV_VAR in exc_info.value.detail
+    request = captured_requests[0]
+    assert request.kind == "channel"
+    assert request.action == "send"
+    assert request.payload["delivery"]["text"] == "hello"
+    assert request.runtime["working_dir"]
+    assert result["provider_message_ref"] == "provider-msg-001"
 
 
-def test_bridge_rejects_invalid_json_output() -> None:
-    completed = subprocess.CompletedProcess(
-        args=["node", "bridge.mjs"],
-        returncode=0,
-        stdout="not-json",
-        stderr="",
-    )
-    with patch("plugin.bridge.subprocess.run", return_value=completed):
+def test_bridge_rejects_invalid_python_transport_output() -> None:
+    with patch("plugin.bridge.dispatch_transport_request", return_value="not-a-dict"):
         with pytest.raises(WeixinBridgeProtocolError):
-            invoke_transport(kind="channel", action="poll", payload={})
+            invoke_transport(
+                kind="channel",
+                action="poll",
+                payload={"transport": {"token": "bot-token-001"}},
+            )
 
 
 def test_bridge_uses_action_specific_timeouts() -> None:
-    completed = subprocess.CompletedProcess(
-        args=["node", "bridge.mjs"],
-        returncode=0,
-        stdout='{"ok": true, "result": {"provider_message_ref": "provider-msg-001"}}',
-        stderr="",
-    )
-    with patch("plugin.bridge.subprocess.run", return_value=completed) as run_mock:
-        invoke_transport(kind="channel", action="poll", payload={})
-        assert run_mock.call_args.kwargs["timeout"] == CHANNEL_POLL_TIMEOUT_SECONDS
-
-        invoke_transport(kind="channel", action="send", payload={})
-        assert run_mock.call_args.kwargs["timeout"] == CHANNEL_SEND_TIMEOUT_SECONDS
+    assert _resolve_timeout_seconds(kind="channel", action="poll") == CHANNEL_POLL_TIMEOUT_SECONDS
+    assert _resolve_timeout_seconds(kind="channel", action="send") == CHANNEL_SEND_TIMEOUT_SECONDS

@@ -5,7 +5,6 @@ __pycache__/
 .venv/
 .env
 .runtime/
-node_modules/
 *.log
 *.sqlite
 *.sqlite-shm
